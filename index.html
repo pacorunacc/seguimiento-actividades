@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#3498db">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>Seguimiento de Actividades</title>
+    <link rel="manifest" href="manifest.json">
+    <style>
+        * {
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+        }
+        body {
+            margin: 0;
+            padding: 10px;
+            background-color: #f5f5f5;
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+        }
+        .week-navigation {
+            display: flex;
+            justify-content: space-between;
+            margin: 15px 0;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:disabled {
+            background-color: #95a5a6;
+            cursor: not-allowed;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+            background-color: white;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 10px;
+            text-align: center;
+        }
+        th {
+            background-color: #3498db;
+            color: white;
+            position: sticky;
+            top: 0;
+        }
+        tr:nth-child(even) {
+            background-color: #f2f2f2;
+        }
+        .admin-panel {
+            display: none;
+            margin-bottom: 15px;
+            padding: 10px;
+            background-color: #eaf2f8;
+            border-radius: 5px;
+        }
+        .activity-input {
+            display: flex;
+            margin-bottom: 15px;
+        }
+        .activity-input input {
+            flex-grow: 1;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 5px 0 0 5px;
+        }
+        .activity-input button {
+            border-radius: 0 5px 5px 0;
+        }
+        .completed {
+            background-color: #2ecc71;
+            color: white;
+        }
+        .login-form {
+            max-width: 300px;
+            margin: 20px auto;
+            padding: 20px;
+            background: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .login-form input {
+            width: 100%;
+            padding: 8px;
+            margin: 8px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .login-form button {
+            width: 100%;
+        }
+        @media (max-width: 600px) {
+            th, td {
+                padding: 5px;
+                font-size: 14px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="login-section" class="login-form">
+        <h2>Iniciar sesión</h2>
+        <input type="password" id="admin-password" placeholder="Contraseña de administrador">
+        <button id="login-btn">Acceder</button>
+    </div>
+
+    <div id="app-content" style="display: none;">
+        <h1>Seguimiento de Actividades</h1>
+        
+        <div class="week-navigation">
+            <button id="prev-week">Semana Anterior</button>
+            <h2 id="week-display">Semana 1</h2>
+            <button id="next-week">Semana Siguiente</button>
+        </div>
+        
+        <div id="admin-panel" class="admin-panel">
+            <h3>Panel de Administrador</h3>
+            <div class="activity-input">
+                <input type="text" id="new-activity" placeholder="Nueva actividad...">
+                <button id="add-activity">Añadir</button>
+            </div>
+        </div>
+        
+        <table id="activities-table">
+            <thead>
+                <tr>
+                    <th>Actividad</th>
+                    <th>Lunes</th>
+                    <th>Martes</th>
+                    <th>Miércoles</th>
+                    <th>Jueves</th>
+                    <th>Viernes</th>
+                    <th>Sábado</th>
+                    <th>Domingo</th>
+                </tr>
+            </thead>
+            <tbody id="activities-body">
+                <!-- Las actividades se añadirán aquí -->
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Configuración de administrador (cambia esta contraseña)
+            const ADMIN_PASSWORD = "admin123";
+            
+            // Variables de estado
+            let currentWeek = 1;
+            let activities = JSON.parse(localStorage.getItem('activities')) || [];
+            let completions = JSON.parse(localStorage.getItem('completions')) || {};
+            let isAdmin = false;
+            
+            // Elementos del DOM
+            const loginSection = document.getElementById('login-section');
+            const appContent = document.getElementById('app-content');
+            const adminPanel = document.getElementById('admin-panel');
+            const adminPasswordInput = document.getElementById('admin-password');
+            const loginBtn = document.getElementById('login-btn');
+            const weekDisplay = document.getElementById('week-display');
+            const prevWeekBtn = document.getElementById('prev-week');
+            const nextWeekBtn = document.getElementById('next-week');
+            const newActivityInput = document.getElementById('new-activity');
+            const addActivityBtn = document.getElementById('add-activity');
+            const activitiesBody = document.getElementById('activities-body');
+            
+            // Event listeners
+            loginBtn.addEventListener('click', handleLogin);
+            adminPasswordInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') handleLogin();
+            });
+            prevWeekBtn.addEventListener('click', goToPreviousWeek);
+            nextWeekBtn.addEventListener('click', goToNextWeek);
+            addActivityBtn.addEventListener('click', addNewActivity);
+            newActivityInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') addNewActivity();
+            });
+            
+            // Verificar si ya está logueado
+            checkLoginStatus();
+            
+            // Funciones
+            function handleLogin() {
+                const password = adminPasswordInput.value.trim();
+                if (password === ADMIN_PASSWORD) {
+                    isAdmin = true;
+                    localStorage.setItem('isAdmin', 'true');
+                    showAppContent();
+                } else {
+                    alert('Contraseña incorrecta');
+                }
+            }
+            
+            function checkLoginStatus() {
+                const savedStatus = localStorage.getItem('isAdmin') === 'true';
+                if (savedStatus) {
+                    isAdmin = true;
+                    showAppContent();
+                }
+            }
+            
+            function showAppContent() {
+                loginSection.style.display = 'none';
+                appContent.style.display = 'block';
+                if (isAdmin) {
+                    adminPanel.style.display = 'block';
+                }
+                renderActivities();
+                updateWeekDisplay();
+            }
+            
+            function goToPreviousWeek() {
+                if (currentWeek > 1) {
+                    currentWeek--;
+                    updateWeekDisplay();
+                }
+            }
+            
+            function goToNextWeek() {
+                currentWeek++;
+                updateWeekDisplay();
+            }
+            
+            function updateWeekDisplay() {
+                weekDisplay.textContent = `Semana ${currentWeek}`;
+                prevWeekBtn.disabled = currentWeek === 1;
+                renderActivities();
+            }
+            
+            function addNewActivity() {
+                if (!isAdmin) return;
+                
+                const activityName = newActivityInput.value.trim();
+                if (activityName) {
+                    activities.push(activityName);
+                    saveActivities();
+                    newActivityInput.value = '';
+                    renderActivities();
+                }
+            }
+            
+            function renderActivities() {
+                activitiesBody.innerHTML = '';
+                
+                activities.forEach((activity, index) => {
+                    const row = document.createElement('tr');
+                    
+                    // Celda de nombre de actividad
+                    const nameCell = document.createElement('td');
+                    nameCell.textContent = activity;
+                    row.appendChild(nameCell);
+                    
+                    // Celdas para cada día de la semana
+                    for (let day = 1; day <= 7; day++) {
+                        const dayCell = document.createElement('td');
+                        const dayKey = `w${currentWeek}d${day}a${index}`;
+                        
+                        if (completions[dayKey]) {
+                            dayCell.classList.add('completed');
+                        }
+                        
+                        dayCell.addEventListener('click', function() {
+                            toggleCompletion(dayKey, dayCell);
+                        });
+                        
+                        row.appendChild(dayCell);
+                    }
+                    
+                    // Botón para eliminar actividad (solo admin)
+                    if (isAdmin) {
+                        const deleteCell = document.createElement('td');
+                        const deleteBtn = document.createElement('button');
+                        deleteBtn.textContent = 'X';
+                        deleteBtn.style.backgroundColor = '#e74c3c';
+                        deleteBtn.addEventListener('click', function() {
+                            deleteActivity(index);
+                        });
+                        deleteCell.appendChild(deleteBtn);
+                        row.appendChild(deleteCell);
+                    }
+                    
+                    activitiesBody.appendChild(row);
+                });
+            }
+            
+            function toggleCompletion(dayKey, cell) {
+                if (completions[dayKey]) {
+                    delete completions[dayKey];
+                    cell.classList.remove('completed');
+                } else {
+                    completions[dayKey] = true;
+                    cell.classList.add('completed');
+                }
+                saveCompletions();
+            }
+            
+            function deleteActivity(index) {
+                if (!isAdmin) return;
+                
+                if (confirm('¿Estás seguro de que quieres eliminar esta actividad?')) {
+                    activities.splice(index, 1);
+                    
+                    for (let key in completions) {
+                        if (key.includes(`a${index}`)) {
+                            delete completions[key];
+                        }
+                    }
+                    
+                    saveActivities();
+                    saveCompletions();
+                    renderActivities();
+                }
+            }
+            
+            function saveActivities() {
+                localStorage.setItem('activities', JSON.stringify(activities));
+            }
+            
+            function saveCompletions() {
+                localStorage.setItem('completions', JSON.stringify(completions));
+            }
+        });
+    </script>
+</body>
+</html>
